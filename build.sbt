@@ -11,6 +11,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" % "spark-sql_2.12" % sparkVersion, // % "provided",
   "org.apache.spark" % "spark-streaming_2.12" % sparkVersion, // % "provided",
   "org.apache.spark" % "spark-sql-kafka-0-10_2.12" % sparkVersion,
+  "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
 )
 
 assemblyMergeStrategy in assembly := {

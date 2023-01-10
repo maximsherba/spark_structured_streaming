@@ -1,70 +1,40 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+Построить модель классификации Ирисов Фишера и сохранить её.
+Описание набора данных: https://ru.wikipedia.org/wiki/%D0%98%D1%80%D0%B8%D1%81%D1%8B_%D0%A4%D0%B8%D1%88%D0%B5%D1%80%D0%B0
+Набор данных в формате CSV: https://www.kaggle.com/arshid/iris-flower-dataset
+Набор данных в формате LIBSVM: https://github.com/apache/spark/blob/v3.2.3/data/mllib/iris_libsvm.txt
+Должен быть предоставлен код построения модели (ноутбук или программа)
+Разработать приложение, которое читает из одной темы Kafka (например, "input") CSV-записи с четырми признаками ирисов, и возвращает в другую тему (например, "predictition") CSV-записи с теми же признаками и классом ириса.
  */
-
-// scalastyle:off println
 package org.apache.spark.examples.sql.streaming
 
 import org.apache.spark.SparkConf
 
 import java.util.UUID
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.streaming.Trigger
-import org.apache.kafka.common.serialization.StringDeserializer
+import org.apache.spark.ml.PipelineModel
+import org.apache.spark.sql.functions.{col, struct, to_json}
+//import org.apache.spark.sql.streaming.Trigger
 
-/**
- * Consumes messages from one or more topics in Kafka and does wordcount.
- * Usage: StructuredKafkaWordCount <bootstrap-servers> <subscribe-type> <topics>
- *     [<checkpoint-location>]
- *   <bootstrap-servers> The Kafka "bootstrap.servers" configuration. A
- *   comma-separated list of host:port.
- *   <subscribe-type> There are three kinds of type, i.e. 'assign', 'subscribe',
- *   'subscribePattern'.
- *   |- <assign> Specific TopicPartitions to consume. Json string
- *   |  {"topicA":[0,1],"topicB":[2,4]}.
- *   |- <subscribe> The topic list to subscribe. A comma-separated list of
- *   |  topics.
- *   |- <subscribePattern> The pattern used to subscribe to topic(s).
- *   |  Java regex string.
- *   |- Only one of "assign, "subscribe" or "subscribePattern" options can be
- *   |  specified for Kafka source.
- *   <topics> Different value format depends on the value of 'subscribe-type'.
- *   <checkpoint-location> Directory in which to create checkpoints. If not
- *   provided, defaults to a randomized directory in /tmp.
- *
- * Example:
- *    `$ bin/run-example \
- *      sql.streaming.StructuredKafkaWordCount host1:port1,host2:port2 \
- *      subscribe topic1,topic2`
- */
+//1 Двухфазный коммит - сначала в целевой кафке, затем в источнике
+//2 Как реализовать корректный выход из приложения (например, надо временно остановить кластер для обслуживания)
+//3 Что не хватает для продуктивного решения
+
 object StructuredKafkaWordCount {
   def main(args: Array[String]): Unit = {
-    if (args.length < 3) {
-      System.err.println("Usage: StructuredKafkaWordCount <bootstrap-servers> " +
-        "<subscribe-type> <topics> [<checkpoint-location>]")
+    if (args.length < 6) {
+      System.err.println("Usage: StructuredKafkaWordCount <spark-master url> <path to ML model> <bootstrap-servers> " +
+        "<subscribe-type> <topic in> <topic out> [<checkpoint-location>]")
       System.exit(1)
     }
 
-    val Array(bootstrapServers, subscribeType, topics, _*) = args
+    val Array(sparkMaster, pathToModel, bootstrapServers, subscribeType, topicIn, topicOut, _*) = args
     val checkpointLocation =
-      if (args.length > 3) args(3) else "/tmp/temporary-" + UUID.randomUUID.toString
+      if (args.length > 6) args(6) else "/tmp/temporary-" + UUID.randomUUID.toString
 
     val sparkConf = new SparkConf()
       .setAppName("StructuredKafkaWordCount")
-      .setMaster("spark://master:7077")
+      .setMaster(sparkMaster) //"spark://master:7077"
 
     val spark = SparkSession
       .builder
@@ -74,22 +44,26 @@ object StructuredKafkaWordCount {
     import spark.implicits._
 
     // Create DataSet representing the stream of input lines from kafka
-    val lines = spark
+    val input = spark
       .readStream
       .format("kafka")
       .option("kafka.bootstrap.servers", bootstrapServers)
-      .option("group.id", "homework")
+      //.option("group.id", "homework")
       .option("startingOffsets","earliest")
-      //.option("value.deserializer", new StringDeserializer)
       //.option("enable.auto.commit","false")
-      .option(subscribeType, topics)
+      .option(subscribeType, topicIn)
       .load()
       .selectExpr("CAST(value AS STRING)")
-      .as[String]
+      .as[String].map(_.split(","))
+      .map(Model(_))
 
-    //lines.show()
+    // Применяем модель к входным данным
+    val model = PipelineModel.load(pathToModel) //"/spark/Scala/IrisModel"
+    val prediction = model.transform(input)
+
+    //input.show()
     /* //Rate
-    val lines = spark
+    val input = spark
       .readStream
       .format("rate")
       .option("rowPerSecond", 100)
@@ -98,7 +72,7 @@ object StructuredKafkaWordCount {
   */
 
     // Socket
-    /*val lines = spark
+    /*val input = spark
       .readStream
       .format("socket")
       .option("host", "localhost")
@@ -107,7 +81,7 @@ object StructuredKafkaWordCount {
       .load
 */
     /* // CSV
-    lines.writeStream
+    input.writeStream
       .format("csv")
       .option("path","src/main/resources/test")
       .outputMode("append")
@@ -117,7 +91,7 @@ object StructuredKafkaWordCount {
 */
     // Start running the query that prints the running counts to the console
     // Console
-    val query = lines.writeStream
+/*    val query = input.writeStream
       .outputMode("append")
       .queryName("datatable")
       .format("console")
@@ -126,8 +100,21 @@ object StructuredKafkaWordCount {
       .option("checkpointLocation", checkpointLocation)
       .start()
       .awaitTermination()
+*/
+
+    // Kafka
+    val outputColumns: Array[String] = Array("sepal_length", "sepal_width", "petal_length", "petal_width", "prediction")
+    val query = prediction
+      .select(to_json(struct(outputColumns.map(col(_)): _*)).alias("value"))
+      .writeStream
+      .option("checkpointLocation", checkpointLocation)
+      .outputMode("append")
+      .format("kafka")
+      .option("kafka.bootstrap.servers", bootstrapServers)
+      .option("topic", topicOut)
+      .start()
+      .awaitTermination()
 
   }
-
 }
 
