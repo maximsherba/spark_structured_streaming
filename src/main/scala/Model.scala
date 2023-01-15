@@ -1,4 +1,4 @@
-package org.apache.spark.examples.sql.streaming
+
 
 case class Model(
                   sepal_length: Double,

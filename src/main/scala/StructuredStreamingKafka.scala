@@ -1,26 +1,11 @@
-/*
-Построить модель классификации Ирисов Фишера и сохранить её.
-Описание набора данных: https://ru.wikipedia.org/wiki/%D0%98%D1%80%D0%B8%D1%81%D1%8B_%D0%A4%D0%B8%D1%88%D0%B5%D1%80%D0%B0
-Набор данных в формате CSV: https://www.kaggle.com/arshid/iris-flower-dataset
-Набор данных в формате LIBSVM: https://github.com/apache/spark/blob/v3.2.3/data/mllib/iris_libsvm.txt
-Должен быть предоставлен код построения модели (ноутбук или программа)
-Разработать приложение, которое читает из одной темы Kafka (например, "input") CSV-записи с четырми признаками ирисов, и возвращает в другую тему (например, "predictition") CSV-записи с теми же признаками и классом ириса.
- */
-package org.apache.spark.examples.sql.streaming
-
 import org.apache.spark.SparkConf
+import org.apache.spark.ml.PipelineModel
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions.{col, struct, to_json}
 
 import java.util.UUID
-import org.apache.spark.sql.SparkSession
-import org.apache.spark.ml.PipelineModel
-import org.apache.spark.sql.functions.{col, struct, to_json}
-//import org.apache.spark.sql.streaming.Trigger
 
-//1 Двухфазный коммит - сначала в целевой кафке, затем в источнике
-//2 Как реализовать корректный выход из приложения (например, надо временно остановить кластер для обслуживания)
-//3 Что не хватает для продуктивного решения
-
-object StructuredKafkaWordCount {
+object StructuredStreamingKafka {
   def main(args: Array[String]): Unit = {
     if (args.length < 6) {
       System.err.println("Usage: StructuredKafkaWordCount <spark-master url> <path to ML model> <bootstrap-servers> " +
@@ -49,7 +34,7 @@ object StructuredKafkaWordCount {
       .format("kafka")
       .option("kafka.bootstrap.servers", bootstrapServers)
       //.option("group.id", "homework")
-      .option("startingOffsets","earliest")
+      .option("startingOffsets", "earliest")
       //.option("enable.auto.commit","false")
       .option(subscribeType, topicIn)
       .load()
@@ -61,7 +46,6 @@ object StructuredKafkaWordCount {
     val model = PipelineModel.load(pathToModel) //"/spark/Scala/IrisModel"
     val prediction = model.transform(input)
 
-    //input.show()
     /* //Rate
     val input = spark
       .readStream
@@ -91,7 +75,7 @@ object StructuredKafkaWordCount {
 */
     // Start running the query that prints the running counts to the console
     // Console
-/*    val query = input.writeStream
+    /*    val query = input.writeStream
       .outputMode("append")
       .queryName("datatable")
       .format("console")
@@ -117,4 +101,3 @@ object StructuredKafkaWordCount {
 
   }
 }
-

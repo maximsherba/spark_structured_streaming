@@ -1,4 +1,4 @@
-name := "StructuredKafkaWordCount"
+name := "StructuredStreamingKafka"
 
 version := "1.0"
 
